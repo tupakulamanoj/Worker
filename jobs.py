@@ -136,7 +136,7 @@ def run_user_job(user_id: str, email: str, company_names: str, interval: str):
         companies = [name.strip().lower() for name in company_names.split(',') if name.strip()]
 
         # Run analysis asynchronously
-        logger.info(f"Starting job for {email} with companies: {company_names},{interval},{email},{tavily_api_key}")
+        logger.info(f"Starting job for {email} with companies: {company_names},{interval},{email}")
         async def run_analysis():
             async with EnhancedTechNewsAnalyzer(
                 mail=email,
