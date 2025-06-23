@@ -26,16 +26,24 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger(__name__)
-
+from redis import Redis
 load_dotenv()
 import os
 from dramatiq.brokers.redis import RedisBroker
 from dramatiq.results import Results
 from dramatiq.results.backends import RedisBackend
-
 redis_url = os.getenv("REDIS_URL")
-broker = RedisBroker(url=redis_url)
-broker.add_middleware(Results(backend=RedisBackend(url=redis_url)))
+
+# Create a Redis client with health check and response decoding
+redis_client = Redis.from_url(
+    redis_url,
+    decode_responses=True,             # Ensures strings are returned instead of bytes
+    health_check_interval=30           # Keeps connection alive, prevents idle timeouts
+)
+
+# Use Redis client for both broker and results backend
+broker = RedisBroker(client=redis_client)
+broker.add_middleware(Results(backend=RedisBackend(client=redis_client)))
 dramatiq.set_broker(broker)
 # Define network error types explicitly as a tuple of types
 NETWORK_ERRORS = (httpx.NetworkError, httpx.ReadError, httpx.ConnectError, httpx.TimeoutException, APIError)
