@@ -18,4 +18,4 @@ RUN pip install --upgrade pip && \
 ENV PYTHONUNBUFFERED=1
 
 # 7. Run Dramatiq worker when the container starts
-CMD ["python", "-m", "dramatiq", "jobs", "--watch=.", "--threads=4"]
+CMD ["python", "-m", "dramatiq", "jobs"]
