@@ -1,19 +1,21 @@
-# Use official Python base image
+# 1. Use a slim Python 3.11 base image
 FROM python:3.11-slim
 
-# Set working directory
+# 2. Set the working directory inside the container
 WORKDIR /app
 
-# Copy all project files into the container
+# 3. Install system dependencies (needed for some Python packages)
+RUN apt-get update && apt-get install -y gcc libffi-dev build-essential
+
+# 4. Copy project files to the container
 COPY . .
 
-# Install dependencies
+# 5. Install Python packages from requirements.txt
 RUN pip install --upgrade pip && \
     pip install -r requirements.txt
 
-# Set default environment variable (optional - Railway injects it at runtime)
-# You can safely remove this line if Railway manages the env vars.
-# ENV REDIS_URL=rediss://default:<your-pass>@romantic-skylark-25427.upstash.io:6379
+# 6. Ensure Railway passes environment variables (no hardcoding needed)
+ENV PYTHONUNBUFFERED=1
 
-# Run Dramatiq when the container starts
-CMD ["python", "-m", "dramatiq", "jobs", "--processes", "4", "--threads", "4"]
+# 7. Run Dramatiq worker when the container starts
+CMD ["python", "-m", "dramatiq", "jobs", "--watch=.", "--threads=4"]
