@@ -40,7 +40,7 @@ logger = logging.getLogger(__name__)
 redis_url = os.getenv("REDIS_URL")
 redis_client = Redis.from_url(
     os.getenv("REDIS_URL"),
-    decode_responses=True,
+    decode_responses=False,
     health_check_interval=30,
     socket_timeout=5,
     socket_connect_timeout=5
