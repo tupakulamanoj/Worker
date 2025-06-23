@@ -73,11 +73,9 @@ def supabase_operation(operation, *args, **kwargs):
     except Exception as e:
         logger.error(f"Supabase operation failed: {str(e)}")
         raise
-
 @dramatiq.actor(
-    # Fix for DecodeError
     max_retries=3,
-    time_limit=60 * 60 * 1000, 
+    time_limit=60 * 60 * 1000,
     priority=5,
     queue_name="enterprise_news"
 )
@@ -87,26 +85,41 @@ def run_user_job(user_id: str, email: str, company_names: str, interval: str):
     lock_timeout = timedelta(minutes=5)
 
     try:
-        # Check for existing job with retry
+        # Check for existing job
         existing_job = supabase_operation(
             supabase.table("email_tracker").select("*").eq("user_id", user_id).execute
         )
 
+        now = datetime.now(timezone.utc)
+
         if existing_job.data:
             job = existing_job.data[0]
-            if job.get("last_status") == "in_progress":
-                updated_at_str = job.get("updated_at")
-                if updated_at_str:
-                    updated_at = datetime.fromisoformat(updated_at_str.replace('Z', '+00:00') if updated_at_str.endswith('Z') else updated_at_str)
-                    if updated_at.tzinfo is None:
-                        updated_at = updated_at.replace(tzinfo=timezone.utc)
-                    
-                    now = datetime.now(timezone.utc)
-                    lock_age = now - updated_at
+            last_status = job.get("last_status")
+            updated_at_str = job.get("updated_at")
+            job_worker_id = job.get("worker_id")
 
-                    if lock_age < lock_timeout:
-                        logger.warning(f"Job already in progress for {email}")
-                        return
+            if updated_at_str:
+                updated_at = datetime.fromisoformat(
+                    updated_at_str.replace('Z', '+00:00') if updated_at_str.endswith('Z') else updated_at_str
+                )
+                if updated_at.tzinfo is None:
+                    updated_at = updated_at.replace(tzinfo=timezone.utc)
+            else:
+                updated_at = now - timedelta(minutes=10)
+
+            lock_age = now - updated_at
+
+            if last_status == "in_progress" and lock_age < lock_timeout:
+                logger.warning(f"Job already in progress for {email} (worker_id: {job_worker_id})")
+                return
+
+            elif last_status == "queued":
+                if job_worker_id is None or lock_age >= lock_timeout:
+                    logger.warning(f"Recovering stuck queued job for {email}")
+                    # continue to assign lock below
+                else:
+                    logger.warning(f"Job for {email} is already queued with active worker")
+                    return
 
         # Acquire lock
         supabase_operation(
@@ -114,12 +127,12 @@ def run_user_job(user_id: str, email: str, company_names: str, interval: str):
                 "user_id": user_id,
                 "last_status": "in_progress",
                 "last_email": email[:100],
-                "updated_at": datetime.now(timezone.utc).isoformat(),
+                "updated_at": now.isoformat(),
                 "worker_id": worker_id
             }).execute
         )
 
-        # Verify lock
+        # Verify lock ownership
         verify_start = time.time()
         while True:
             current_status = supabase_operation(
@@ -135,32 +148,30 @@ def run_user_job(user_id: str, email: str, company_names: str, interval: str):
         logger.info(f"Starting job for {email} with companies: {company_names}")
         companies = [name.strip().lower() for name in company_names.split(',') if name.strip()]
 
-        # Run analysis asynchronously
-        logger.info(f"Starting job for {email} with companies: {company_names},{interval},{email}")
         async def run_analysis():
             async with EnhancedTechNewsAnalyzer(
                 mail=email,
-                tavily_api_key=os.getenv('TAVILY_API_KEY'), 
+                tavily_api_key=os.getenv('TAVILY_API_KEY'),
                 openai_api_key=os.getenv('OPENAI_API_KEY'),
                 companies=companies,
                 frequency=interval,
                 max_articles_per_company=10,
             ) as analyzer:
-                logger.info(f"Starting analysis for {len(companies)} companies")
+                logger.info(f"Running analysis for {len(companies)} companies → {email}")
                 return await analyzer.run_comprehensive_analysis()
 
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         try:
             results = loop.run_until_complete(run_analysis())
-            logger.info(f"Analysis completed successfully for {email}")
+            logger.info(f"Analysis completed for {email}")
             supabase_operation(
                 supabase.table("email_tracker").upsert({
                     "user_id": user_id,
                     "last_status": "success",
                     "last_email": email[:100],
-                    "last_sent": datetime.now(timezone.utc).isoformat(),
-                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                    "last_sent": now.isoformat(),
+                    "updated_at": now.isoformat(),
                     "worker_id": None
                 }).execute
             )
