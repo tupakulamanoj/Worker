@@ -38,15 +38,15 @@ logger = logging.getLogger(__name__)
 
 # Redis setup
 redis_url = os.getenv("REDIS_URL")
-
 redis_client = Redis.from_url(
-    redis_url,
+    os.getenv("REDIS_URL"),
     decode_responses=True,
     health_check_interval=30,
     socket_timeout=5,
     socket_connect_timeout=5
 )
 
+broker = RedisBroker(client=redis_client, encoder=JSONEncoder())
 # Health check
 try:
     redis_client.ping()
@@ -54,8 +54,7 @@ try:
 except Exception as e:
     logger.error(f"❌ Redis connection failed: {str(e)}")
 
-# Set up Dramatiq broker and result backend
-broker = RedisBroker(client=redis_client)
+
 broker.add_middleware(Results(backend=RedisBackend(client=redis_client)))
 dramatiq.set_broker(broker)
 
@@ -76,7 +75,7 @@ def supabase_operation(operation, *args, **kwargs):
         raise
 
 @dramatiq.actor(
-    encoder=JSONEncoder(),  # Fix for DecodeError
+    # Fix for DecodeError
     max_retries=3,
     time_limit=60 * 60 * 1000, 
     priority=5,
