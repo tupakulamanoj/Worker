@@ -34,14 +34,15 @@ from dramatiq.results import Results
 from dramatiq.results.backends import RedisBackend
 redis_url = os.getenv("REDIS_URL")
 
-# Create a Redis client with health check and response decoding
 redis_client = Redis.from_url(
     redis_url,
-    decode_responses=True,             # Ensures strings are returned instead of bytes
-    health_check_interval=30           # Keeps connection alive, prevents idle timeouts
+    decode_responses=True,
+    health_check_interval=30,      # avoids idle disconnects
+    socket_timeout=5,              # timeout for Redis calls
+    socket_connect_timeout=5       # timeout for connection establishment
 )
 
-# Use Redis client for both broker and results backend
+# Use same client in both broker and results
 broker = RedisBroker(client=redis_client)
 broker.add_middleware(Results(backend=RedisBackend(client=redis_client)))
 dramatiq.set_broker(broker)
