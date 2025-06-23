@@ -55,6 +55,7 @@ def check_and_send_emails():
                 customer = user['customers'][0]
                 email = user['News_Email']
                 user_id = user['id']
+                raw_frequency = customer.get('frequency', 'week')
                 interval = get_interval_from_frequency(customer.get('frequency', 'week'))
                 
                 # Check last sent email info with additional status check
@@ -117,7 +118,7 @@ def check_and_send_emails():
                         "last_email": email
                     }).execute()
                     
-                    run_user_job.send(user_id, email, customer.get('company_names', ''), interval=interval)
+                    run_user_job.send(user_id, email, customer.get('company_names', ''), interval=raw_frequency)
                     logger.info(f"Queued email for {email}")
                     emails_queued += 1
                     
